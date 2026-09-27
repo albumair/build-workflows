@@ -107,16 +107,19 @@ jobs:
             | node scripts/extract-oidc-claims.mjs \
             > evidence/oidc-claims.json
 
-      # The caller identity check is intentionally broad only for this spike;
-      # the resulting evidence supplies the exact claims used by admission.
+      # The certificate SAN for a reusable workflow is the called workflow's
+      # job_workflow_ref. Validate its protected repository/path shape first,
+      # then require Cosign to match the exact observed full-SHA identity.
       - name: Verify signature and record certificate
         env:
           IMAGE: ${{ steps.refs.outputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          job_workflow_ref="$(jq -r '.job_workflow_ref // empty' evidence/oidc-claims.json)"
+          [[ "$job_workflow_ref" =~ ^albumair/build-workflows/\.github/workflows/build\.yml@[0-9a-f]{40}$ ]]
           cosign verify "${IMAGE}@${DIGEST}" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            --certificate-identity-regexp "^https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main$" \
+            --certificate-identity "https://github.com/${job_workflow_ref}" \
             --output json > evidence/cosign-verification.json
 
       - name: Assemble release evidence
